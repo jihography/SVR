@@ -14,6 +14,13 @@ set.seed(index)
 
 setwd('C:/Users/giuli/Documents/SMAC')
 
+# Set to TRUE to bypass simulations and load an external dataset that already
+# contains a matrix named `sim` (time x units). You can optionally include
+# `bands`, `t0`, and `num_controls` in the .RData file to override the defaults
+# below. The path is relative to the working directory set above.
+use_external_data <- FALSE
+external_data_path <- "SVR_input_data.RData"
+
 # --------------- Sourcing functions --------------- #
 
 # Sourcing in code from other files.
@@ -117,24 +124,56 @@ treated_radius <- seq(0, 1, length.out = bands)
 print(treated_radius)
 
 
-# ---------------- PART B: Generating data ---------------- #
+# ---------------- PART B: Generating or loading data ---------------- #
 
-seed_b <- seed_t <- seed_e <- index
+if (use_external_data) {
+  external_env <- new.env()
+  loaded_vars <- load(external_data_path, envir = external_env)
 
-sim <- sim_model(seed_b = seed_b, seed_t = seed_t, seed_e = seed_e,
-                 time_periods = time_periods, 
-                 time_periods_controls = time_periods_controls,
-                 bands = bands, num_controls = num_controls,
-                 sp_var = sp_var, sp_range = sp_range, bi_var = bi_var, 
-                 tt_var = tt_var,
-                 tt_range = tt_range, ti_var = ti_var, sp_nugget = sp_nugget,
-                 tt_nugget = tt_nugget,
-                 e_weight = e_weight, share_error = share_error)
+  if (!"sim" %in% loaded_vars) {
+    stop("The external data file must contain an object named 'sim'.")
+  }
 
-beta_true <- sim$beta
-sim <- sim$sim  # The potential outcomes under control.
+  sim <- external_env$sim
 
-set.seed(index)
+  if ("bands" %in% loaded_vars) {
+    bands <- external_env$bands
+  }
+
+  if ("t0" %in% loaded_vars) {
+    t0 <- external_env$t0
+    tt_periods <- t0
+  }
+
+  if ("num_controls" %in% loaded_vars) {
+    num_controls <- external_env$num_controls
+  } else {
+    num_controls <- ncol(sim) - bands
+  }
+
+  time_periods <- nrow(sim)
+  beta_true <- NULL
+
+  message("Loaded external sim matrix with ", nrow(sim), " rows and ",
+          ncol(sim), " columns.")
+} else {
+  seed_b <- seed_t <- seed_e <- index
+
+  sim <- sim_model(seed_b = seed_b, seed_t = seed_t, seed_e = seed_e,
+                   time_periods = time_periods,
+                   time_periods_controls = time_periods_controls,
+                   bands = bands, num_controls = num_controls,
+                   sp_var = sp_var, sp_range = sp_range, bi_var = bi_var,
+                   tt_var = tt_var,
+                   tt_range = tt_range, ti_var = ti_var, sp_nugget = sp_nugget,
+                   tt_nugget = tt_nugget,
+                   e_weight = e_weight, share_error = share_error)
+
+  beta_true <- sim$beta
+  sim <- sim$sim  # The potential outcomes under control.
+
+  set.seed(index)
+}
 
 
 
