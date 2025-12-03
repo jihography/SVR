@@ -21,6 +21,13 @@ setwd("/Users/kjh/Documents/innocity/SVR")
 use_external_data <- TRUE
 external_data_path <- "SVR_input_data.RData"
 
+# Set to TRUE to bypass simulations and load an external dataset that already
+# contains a matrix named `sim` (time x units). You can optionally include
+# `bands`, `t0`, and `num_controls` in the .RData file to override the defaults
+# below. The path is relative to the working directory set above.
+use_external_data <- FALSE
+external_data_path <- "SVR_input_data.RData"
+
 # --------------- Sourcing functions --------------- #
 
 # Sourcing in code from other files.
@@ -163,6 +170,7 @@ if (use_external_data) {
                    time_periods = time_periods,
                    time_periods_controls = time_periods_controls,
                    bands = bands, num_controls = num_controls,
+                   treated_radius = treated_radius, rho_error = rho_error,
                    sp_var = sp_var, sp_range = sp_range, bi_var = bi_var,
                    tt_var = tt_var,
                    tt_range = tt_range, ti_var = ti_var, sp_nugget = sp_nugget,
@@ -183,13 +191,15 @@ iter <- 4
 warm <- 2
 chains <- 1
 
-est <- estimation(sim = sim, t0 = t0, bands = bands, iter = iter, warm = warm,
+est <- estimation(sim = sim, t0 = t0, bands = bands,
+                  treated_radius = treated_radius,
+                  iter = iter, warm = warm,
                   norm = TRUE, method = method, chains = chains)
 
 
 # ---------------- PART D: Getting predictions ---------------- #
 
-cal <- calculation(sim = sim, est = est, bands = bands, norm = TRUE)
+cal <- calculation(sim = sim, est = est, t0 = t0, bands = bands, norm = TRUE)
 point <- point_estimate(sim, cal) ## it calculates bias and MSE
 c_interv <- ci(sim = sim, est = est, cal = cal, t0 = t0, norm = TRUE)
 cover <- coverage(sim, interv = c_interv)

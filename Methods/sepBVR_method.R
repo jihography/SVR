@@ -9,7 +9,7 @@
 #' 
 #' Depends on the BVR.stan file, and rstan library
 #' 
-sepBVR <- function(ym.pre, x.pre, x, chains = 3) {
+sepBVR <- function(ym.pre, x.pre, x, iter, warm, chains = 3) {
   
   # arguments
   bands <- ncol(ym.pre)

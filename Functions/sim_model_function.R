@@ -17,6 +17,7 @@
 
 sim_model<-function(seed_b, seed_t, seed_e,
                     time_periods, time_periods_controls, bands, num_controls,
+                    treated_radius, rho_error,
                     sp_var, sp_range, bi_var,  tt_var, tt_range, ti_var, sp_nugget, tt_nugget,
                     e_weight, share_error){
   
