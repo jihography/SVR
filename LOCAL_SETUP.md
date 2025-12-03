@@ -12,6 +12,7 @@ Follow these steps to run `hpg_apr.R` with the new external dataset loader:
 3. **Prepare your `.RData` file**
    - Ensure it contains an object named `sim` (time × units matrix with treated units first, then controls).
    - Optionally include `bands`, `t0`, and `num_controls` in the same file to override the defaults. Otherwise the script will derive `num_controls <- ncol(sim) - bands` and keep the existing `bands`/`t0` values.
+   - `bands` must equal the number of treated units (columns at the start of `sim`), and `t0` must be the last pre-intervention period (row index). The script now stops early if these values are out of range.
 
 4. **Run the script**
    - Execute from the repo root: `Rscript hpg_apr.R <sp_range> <t0> <errors_sp> <index>`.

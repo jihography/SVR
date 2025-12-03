@@ -21,6 +21,13 @@ setwd("/Users/kjh/Documents/innocity/SVR")
 use_external_data <- TRUE
 external_data_path <- "SVR_input_data.RData"
 
+# Set to TRUE to bypass simulations and load an external dataset that already
+# contains a matrix named `sim` (time x units). You can optionally include
+# `bands`, `t0`, and `num_controls` in the .RData file to override the defaults
+# below. The path is relative to the working directory set above.
+use_external_data <- FALSE
+external_data_path <- "SVR_input_data.RData"
+
 # --------------- Sourcing functions --------------- #
 
 # Sourcing in code from other files.
@@ -117,14 +124,15 @@ if (errors_sp == FALSE) {
 print(errors_sp)
 
 
-# ------- The methods that will be used.
-method <- c("SC","SR", "OLS", "BVR", "BSC", "SMAC")
-# method <- c("SC","SR", "OLS")
+# ---------------- PART B: Generating or loading data ---------------- #
 
-# --------- The treated units.
-treated_radius <- seq(0, 1, length.out = bands)
-print(treated_radius)
+if (use_external_data) {
+  external_env <- new.env()
+  loaded_vars <- load(external_data_path, envir = external_env)
 
+  if (!"sim" %in% loaded_vars) {
+    stop("The external data file must contain an object named 'sim'.")
+  }
 
 # ---------------- PART B: Generating or loading data ---------------- #
 
@@ -178,6 +186,32 @@ if (use_external_data) {
   set.seed(index)
 }
 
+if (bands < 1 || bands >= ncol(sim)) {
+  stop("`bands` must be at least 1 and less than the total number of units.")
+}
+
+if (t0 < 1 || t0 >= nrow(sim)) {
+  stop("`t0` must fall within the number of available time periods.")
+}
+
+if (length(treated_radius) != bands) {
+  stop("Length of `treated_radius` must match `bands`.")
+}
+
+# Validate treated/control split matches expectations.
+if (ncol(sim) - bands != num_controls) {
+  message(
+    "Resetting `num_controls` to match data: expected ", ncol(sim) - bands,
+    " controls from sim matrix, overriding previous value of ", num_controls
+  )
+  num_controls <- ncol(sim) - bands
+}
+
+
+
+# ------- The methods that will be used.
+method <- c("SC","SR", "OLS", "BVR", "BSC", "SMAC")
+method <- c("SC","SR", "OLS")
 
 
 # ---------------- PART C: Estimating the models ---------------- #

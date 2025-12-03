@@ -14,7 +14,10 @@ sepBSC <- function(ym.pre, x.pre, x, iter, warm, chains = 3) {
   # arguments
   bands <- ncol(ym.pre)
   num_controls <- ncol(x.pre)
-  parameters=list()
+  parameters = list()
+
+  bsc_model <- rstan::stan_model(file = "Methods/BSC.stan")
+  has_parameters <- length(bsc_model@model_pars) > 0
 
   for (i in 1:bands) {
     
@@ -28,14 +31,15 @@ sepBSC <- function(ym.pre, x.pre, x, iter, warm, chains = 3) {
     )
     
     
-    fit <- rstan::stan(
-      file = "Methods/BSC.stan",  # Bayesian Synthetic control
+    fit <- rstan::sampling(
+      object = bsc_model,
       data = ss_data,
       cores = min(chains, 3),
       iter = iter,
       chains = chains,
-      verbose = F,
+      verbose = FALSE,
       warmup = warm,
+      algorithm = if (has_parameters) "NUTS" else "Fixed_param",
       control = list(
         max_treedepth = 12,
         stepsize = 0.05,
