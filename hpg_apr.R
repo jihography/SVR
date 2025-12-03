@@ -12,7 +12,7 @@ errors_sp <- as.numeric(args[3])
 index <- as.numeric(args[4])
 set.seed(index)
 
-setwd('C:/Users/giuli/Documents/SMAC')
+setwd("/Users/kjh/Documents/innocity/SVR")
 
 # --------------- Sourcing functions --------------- #
 
