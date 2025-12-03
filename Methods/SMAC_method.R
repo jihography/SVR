@@ -11,7 +11,8 @@
 #' 
 #' Depends on the MGP.stan file, and rstan library
 #' 
-SMAC <- function(ym.pre, x.pre, x, treated_radius, chains = 3) {
+SMAC <- function(ym.pre, x.pre, x, treated_radius, num_controls, iter, warm,
+                 chains = 3) {
   
   # arguments
   bands <- ncol(ym.pre)

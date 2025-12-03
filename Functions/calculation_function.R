@@ -6,7 +6,7 @@
 ## @ norm <- normalization of outcomes - pre treatment
 
 
-calculation <- function(sim, est, bands, norm) {
+calculation <- function(sim, est, t0, bands, norm) {
   
   # If the data are not standardized, we do not need to rescale.
   means <- rep(0, bands)
