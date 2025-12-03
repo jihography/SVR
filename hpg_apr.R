@@ -14,6 +14,13 @@ set.seed(index)
 
 setwd('C:/Users/giuli/Documents/SMAC')
 
+# Set to TRUE to bypass simulations and load an external dataset that already
+# contains a matrix named `sim` (time x units). You can optionally include
+# `bands`, `t0`, and `num_controls` in the .RData file to override the defaults
+# below. The path is relative to the working directory set above.
+use_external_data <- FALSE
+external_data_path <- "SVR_input_data.RData"
+
 # --------------- Sourcing functions --------------- #
 
 # Sourcing in code from other files.
@@ -108,34 +115,95 @@ if (errors_sp == 1) {
 print(errors_sp)
 
 
+# ---------------- PART B: Generating or loading data ---------------- #
+
+if (use_external_data) {
+  external_env <- new.env()
+  loaded_vars <- load(external_data_path, envir = external_env)
+
+  if (!"sim" %in% loaded_vars) {
+    stop("The external data file must contain an object named 'sim'.")
+  }
+
+  sim <- external_env$sim
+
+  if ("bands" %in% loaded_vars) {
+    bands <- external_env$bands
+  }
+
+  if ("t0" %in% loaded_vars) {
+    t0 <- external_env$t0
+    tt_periods <- t0
+  }
+
+  if ("num_controls" %in% loaded_vars) {
+    num_controls <- external_env$num_controls
+  } else {
+    num_controls <- ncol(sim) - bands
+  }
+
+  if ("treated_radius" %in% loaded_vars) {
+    treated_radius <- external_env$treated_radius
+  } else {
+    treated_radius <- seq(0, 1, length.out = bands)
+  }
+
+  print(treated_radius)
+
+  time_periods <- nrow(sim)
+  beta_true <- NULL
+
+  message("Loaded external sim matrix with ", nrow(sim), " rows and ",
+          ncol(sim), " columns.")
+} else {
+  seed_b <- seed_t <- seed_e <- index
+
+  treated_radius <- seq(0, 1, length.out = bands)
+  print(treated_radius)
+
+  sim <- sim_model(seed_b = seed_b, seed_t = seed_t, seed_e = seed_e,
+                   time_periods = time_periods,
+                   time_periods_controls = time_periods_controls,
+                   bands = bands, num_controls = num_controls,
+                   treated_radius = treated_radius, rho_error = rho_error,
+                   sp_var = sp_var, sp_range = sp_range, bi_var = bi_var,
+                   tt_var = tt_var,
+                   tt_range = tt_range, ti_var = ti_var, sp_nugget = sp_nugget,
+                   tt_nugget = tt_nugget,
+                   e_weight = e_weight, share_error = share_error)
+
+  beta_true <- sim$beta
+  sim <- sim$sim  # The potential outcomes under control.
+
+  set.seed(index)
+}
+
+if (bands < 1 || bands >= ncol(sim)) {
+  stop("`bands` must be at least 1 and less than the total number of units.")
+}
+
+if (t0 < 1 || t0 >= nrow(sim)) {
+  stop("`t0` must fall within the number of available time periods.")
+}
+
+if (length(treated_radius) != bands) {
+  stop("Length of `treated_radius` must match `bands`.")
+}
+
+# Validate treated/control split matches expectations.
+if (ncol(sim) - bands != num_controls) {
+  message(
+    "Resetting `num_controls` to match data: expected ", ncol(sim) - bands,
+    " controls from sim matrix, overriding previous value of ", num_controls
+  )
+  num_controls <- ncol(sim) - bands
+}
+
+
+
 # ------- The methods that will be used.
 method <- c("SC","SR", "OLS", "BVR", "BSC", "SMAC")
 method <- c("SC","SR", "OLS")
-
-# --------- The treated units.
-treated_radius <- seq(0, 1, length.out = bands)
-print(treated_radius)
-
-
-# ---------------- PART B: Generating data ---------------- #
-
-seed_b <- seed_t <- seed_e <- index
-
-sim <- sim_model(seed_b = seed_b, seed_t = seed_t, seed_e = seed_e,
-                 time_periods = time_periods, 
-                 time_periods_controls = time_periods_controls,
-                 bands = bands, num_controls = num_controls,
-                 sp_var = sp_var, sp_range = sp_range, bi_var = bi_var, 
-                 tt_var = tt_var,
-                 tt_range = tt_range, ti_var = ti_var, sp_nugget = sp_nugget,
-                 tt_nugget = tt_nugget,
-                 e_weight = e_weight, share_error = share_error)
-
-beta_true <- sim$beta
-sim <- sim$sim  # The potential outcomes under control.
-
-set.seed(index)
-
 
 
 # ---------------- PART C: Estimating the models ---------------- #
@@ -144,13 +212,15 @@ iter <- 4
 warm <- 2
 chains <- 1
 
-est <- estimation(sim = sim, t0 = t0, bands = bands, iter = iter, warm = warm,
+est <- estimation(sim = sim, t0 = t0, bands = bands,
+                  treated_radius = treated_radius,
+                  iter = iter, warm = warm,
                   norm = TRUE, method = method, chains = chains)
 
 
 # ---------------- PART D: Getting predictions ---------------- #
 
-cal <- calculation(sim = sim, est = est, bands = bands, norm = TRUE)
+cal <- calculation(sim = sim, est = est, t0 = t0, bands = bands, norm = TRUE)
 point <- point_estimate(sim, cal) ## it calculates bias and MSE
 c_interv <- ci(sim = sim, est = est, cal = cal, t0 = t0, norm = TRUE)
 cover <- coverage(sim, interv = c_interv)

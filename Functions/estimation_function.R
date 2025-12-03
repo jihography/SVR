@@ -7,8 +7,8 @@
 ## @ norm <- normalization of outcomes - pre treatment
 
 
-estimation <- function(sim, t0, bands, iter, warm, norm = TRUE, method,
-                       chains = 3) {
+estimation <- function(sim, t0, bands, treated_radius, iter, warm,
+                       norm = TRUE, method, chains = 3) {
   
   # Getting some quantities that are used later in the code.
   num_controls <- dim(sim)[2] - bands
@@ -70,7 +70,8 @@ estimation <- function(sim, t0, bands, iter, warm, norm = TRUE, method,
   
   
   if ("BVR" %in% method) {
-    out$BVR <- sepBVR(ym.pre = ym.pre, x.pre = x.pre, x = x, chains = chains)
+    out$BVR <- sepBVR(ym.pre = ym.pre, x.pre = x.pre, x = x, iter = iter,
+                      warm = warm, chains = chains)
     # The output is a list, where each element of the list corresponds to a
     # treated unit. Then each element is a list of itself from what was
     # extracted from the Stan fit, including a vector of residual variances
@@ -83,7 +84,8 @@ estimation <- function(sim, t0, bands, iter, warm, norm = TRUE, method,
   
   
   if ("BSC" %in% method){
-    out$BSC <- sepBSC(ym.pre = ym.pre, x.pre = x.pre, x = x, chains = chains)
+    out$BSC <- sepBSC(ym.pre = ym.pre, x.pre = x.pre, x = x, iter = iter,
+                      warm = warm, chains = chains)
     # The exact same output as sepBVR, except the coefficient matrix does not
     # include intercepts.
     print("BSC estimates done")
@@ -92,7 +94,8 @@ estimation <- function(sim, t0, bands, iter, warm, norm = TRUE, method,
   
   if("SMAC" %in% method) {
     out$SMAC <- SMAC(ym.pre = ym.pre, x.pre = x.pre, x = x,
-                     treated_radius = treated_radius, chains = chains)
+                     treated_radius = treated_radius, num_controls = num_controls,
+                     iter = iter, warm = warm, chains = chains)
     # The output of the SMAC stan fit including coefficients, spatial
     # parameters for the errors and the coefficients, weight of spatial VS
     # iid error, covariance matrix, and predictions for the treated units.
