@@ -10,7 +10,7 @@
 #' Depends on the BSC.stan file, and rstan library
 #' 
 sepBSC <- function(ym.pre, x.pre, x, iter, warm, chains = 3) {
-
+  
   # arguments
   bands <- ncol(ym.pre)
   num_controls <- ncol(x.pre)

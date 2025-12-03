@@ -12,7 +12,14 @@ errors_sp <- as.numeric(args[3])
 index <- as.numeric(args[4])
 set.seed(index)
 
-setwd('C:/Users/giuli/Documents/SMAC')
+setwd("/Users/kjh/Documents/innocity/SVR")
+
+# Set to TRUE to bypass simulations and load an external dataset that already
+# contains a matrix named `sim` (time x units). You can optionally include
+# `bands`, `t0`, and `num_controls` in the .RData file to override the defaults
+# below. The path is relative to the working directory set above.
+use_external_data <- TRUE
+external_data_path <- "SVR_input_data.RData"
 
 # Set to TRUE to bypass simulations and load an external dataset that already
 # contains a matrix named `sim` (time x units). You can optionally include
@@ -76,11 +83,11 @@ rstan_options(auto_write = FALSE)
 # ----------- PART A: Setting the simulation parameters ----------- #
 
 ## dim parameter
-num_controls <- 7
-t0 <- tt_periods
+num_controls <- 16
+t0 <- 11
 time_periods <- t0 + 20
 time_periods_controls <- 80  # -GP- Do not change this with t0.
-bands <- 2
+bands <- 4
 
 ## sampling pars
 iter <- 6000
@@ -98,22 +105,34 @@ tt_range <- .05
 sp_nugget <- 0.001
 tt_nugget <- 0.15 ^ 2  # -GP- Adding some temporal nugget to the controls.
 rho_error <- .2	  
+errors_sp <- TRUE
 
 
 # ----- Outcome model errors.
 
-if (errors_sp == 1) {
+if (errors_sp == FALSE) {
   e_weight <- 0  # Proportion of error's variance that is spatial
   share_error <- 0.4  # Noise-signal ratio in terms of variances (error sd as % of signal)
-} else if (errors_sp == 2) {
+} else if (errors_sp == TRUE) {
   e_weight <- .5
   share_error <- 0.4
-} else if (errors_sp == 3) {
-  e_weight <- .5
-  share_error <- 0.7
-}
+  }
+# } else if (errors_sp == 3) {
+#   e_weight <- .5
+#   share_error <- 0.7
+# }
 print(errors_sp)
 
+
+# ---------------- PART B: Generating or loading data ---------------- #
+
+if (use_external_data) {
+  external_env <- new.env()
+  loaded_vars <- load(external_data_path, envir = external_env)
+
+  if (!"sim" %in% loaded_vars) {
+    stop("The external data file must contain an object named 'sim'.")
+  }
 
 # ---------------- PART B: Generating or loading data ---------------- #
 
@@ -142,14 +161,6 @@ if (use_external_data) {
     num_controls <- ncol(sim) - bands
   }
 
-  if ("treated_radius" %in% loaded_vars) {
-    treated_radius <- external_env$treated_radius
-  } else {
-    treated_radius <- seq(0, 1, length.out = bands)
-  }
-
-  print(treated_radius)
-
   time_periods <- nrow(sim)
   beta_true <- NULL
 
@@ -157,9 +168,6 @@ if (use_external_data) {
           ncol(sim), " columns.")
 } else {
   seed_b <- seed_t <- seed_e <- index
-
-  treated_radius <- seq(0, 1, length.out = bands)
-  print(treated_radius)
 
   sim <- sim_model(seed_b = seed_b, seed_t = seed_t, seed_e = seed_e,
                    time_periods = time_periods,
