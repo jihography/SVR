@@ -12,7 +12,14 @@ errors_sp <- as.numeric(args[3])
 index <- as.numeric(args[4])
 set.seed(index)
 
-setwd('C:/Users/giuli/Documents/SMAC')
+setwd("/Users/kjh/Documents/innocity/SVR")
+
+# Set to TRUE to bypass simulations and load an external dataset that already
+# contains a matrix named `sim` (time x units). You can optionally include
+# `bands`, `t0`, and `num_controls` in the .RData file to override the defaults
+# below. The path is relative to the working directory set above.
+use_external_data <- TRUE
+external_data_path <- "SVR_input_data.RData"
 
 # Set to TRUE to bypass simulations and load an external dataset that already
 # contains a matrix named `sim` (time x units). You can optionally include
