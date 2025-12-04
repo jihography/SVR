@@ -10,7 +10,7 @@ sp_range <- as.numeric(args[1])
 tt_periods <- as.numeric(args[2])
 errors_sp <- as.numeric(args[3])
 index <- as.numeric(args[4])
-set.seed(index)
+# set.seed(index)
 
 setwd("/Users/kjh/Documents/innocity/SVR")
 
@@ -25,8 +25,8 @@ external_data_path <- "SVR_input_data.RData"
 # contains a matrix named `sim` (time x units). You can optionally include
 # `bands`, `t0`, and `num_controls` in the .RData file to override the defaults
 # below. The path is relative to the working directory set above.
-use_external_data <- FALSE
-external_data_path <- "SVR_input_data.RData"
+# use_external_data <- FALSE
+# external_data_path <- "SVR_input_data.RData"
 
 # --------------- Sourcing functions --------------- #
 
@@ -211,7 +211,7 @@ if (ncol(sim) - bands != num_controls) {
 
 # ------- The methods that will be used.
 method <- c("SC","SR", "OLS", "BVR", "BSC", "SMAC")
-method <- c("SC","SR", "OLS")
+# method <- c("SC","SR", "OLS")
 
 
 # ---------------- PART C: Estimating the models ---------------- #
