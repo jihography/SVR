@@ -1,0 +1,80 @@
+---
+title: "Untitled"
+author: "Jiho Kwak, 2020-17530"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## load result file
+
+```{r}
+load("Output/apr_sims//Results/ssNA/tt11/eeNA/res_NA.RData")
+```
+
+## check
+
+```{r}
+# 방법 목록
+methods <- names(res$point$bias)
+
+# 전체 요약 (mean bias / MAE / RMSE)
+summ <- do.call(rbind, lapply(methods, function(m){
+  b  <- res$point$bias[[m]]
+  se <- res$point$SqE[[m]]
+  c(method = m,
+    mean_bias = mean(b),
+    MAE  = mean(abs(b)),
+    RMSE = sqrt(mean(se)))
+}))
+summ <- as.data.frame(summ)
+summ$mean_bias <- as.numeric(summ$mean_bias)
+summ$MAE <- as.numeric(summ$MAE)
+summ$RMSE <- as.numeric(summ$RMSE)
+summ[order(summ$RMSE), ]
+
+# CI 폭 체크(OLS가 0인지 확인)
+width_ols <- res$ci$OLS$upper_bound - res$ci$OLS$lower_bound
+range(width_ols)  # c(0,0) 나오면 CI 계산 문제
+mean(width_ols == 0)
+
+# 커버리지 평균
+cov_summ <- sapply(res$coverage, mean)
+cov_summ
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+COL <- c(BVR = "#F0E442", OLS = "#56B4E9", SVR = "#009E73")
+
+plot_beta_panels <- function(beta_df, controls_to_show) {
+  beta_df %>%
+    filter(control_id %in% controls_to_show,
+           method %in% c("BVR","OLS","SVR")) %>%
+    mutate(
+      method = factor(method, levels = c("BVR","OLS","SVR")),
+      control_id = factor(control_id, levels = controls_to_show)
+    ) %>%
+    ggplot(aes(x = treated_unit, y = beta, color = method, group = method)) +
+    geom_line(linewidth = 1.1) +
+    facet_wrap(~ control_id, nrow = 1) +
+    scale_color_manual(values = COL, name = "Method") +
+    labs(x = "Treated units", y = NULL) +
+    theme_bw(base_size = 12) +
+    theme(
+      legend.position = "top",
+      panel.grid.minor = element_blank()
+    )
+}
+
+# 예시:
+controls_to_show <- sample(unique(beta_df$control_id), 3)
+p_top <- plot_beta_panels(beta_df, controls_to_show)
+
+```
+

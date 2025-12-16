@@ -25,9 +25,9 @@ scenarios <- c("t0=10, IID", "t0=10, 40%","t0=10, 70%",
                "t0=40, IID", "t0=40, 40%","t0=40, 70%")
 wd<-"C:/Users/giuli/Desktop/cluster ottobre"
 ## -- POINT ESTIMATES RESULTS -- ##
-point_04=postestimation(wd,  "0.4",   mode = 1,  scenarios)
 point_001=postestimation(wd,  "0.01",   mode = 1,  scenarios)
 point_02=postestimation(wd,  "0.2",   mode = 1,  scenarios)
+point_04=postestimation(wd,  "0.4",   mode = 1,  scenarios)
 point_06=postestimation(wd,  "0.6",   mode = 1,  scenarios)
 
 ## -- COVERAGE -- ##

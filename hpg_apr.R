@@ -1,4 +1,4 @@
-######################################################
+########################################################
 ########################################################
 ## master script for computations on hipergator  #######
 ########################################################
@@ -77,62 +77,62 @@ library(spatstat)
 library(Matrix)
 library(fungible)
 rstan_options(auto_write = FALSE)
-#out_path <- 'Output/1_sims/Results/'
+out_path <- 'Output/1_sims/Results/'
 
 
 # ----------- PART A: Setting the simulation parameters ----------- #
 
-## dim parameter
-num_controls <- 16
-t0 <- 11
-time_periods <- t0 + 20
-time_periods_controls <- 80  # -GP- Do not change this with t0.
-bands <- 4
-
-## sampling pars
-iter <- 6000
-warm <- 2000
-chains <- 3
-## sim pars
-
-# ----- Spatial and temporal correlation parameters.
-
-sp_var <- .4
-tt_var <- 0.3 ^ 2  # -GP- I reduced the tt_var a little.
-ti_var <- 0.7 ^ 2  # -GP- I squared this to make it a variance and comparable to tt_var
-bi_var <- 0.5 ^ 2  # -GP- I squared this to make it a variance and comparable to sp_var
-tt_range <- .05
-sp_nugget <- 0.001
-tt_nugget <- 0.15 ^ 2  # -GP- Adding some temporal nugget to the controls.
-rho_error <- .2	  
-errors_sp <- TRUE
-
-
-# ----- Outcome model errors.
-
-if (errors_sp == FALSE) {
-  e_weight <- 0  # Proportion of error's variance that is spatial
-  share_error <- 0.4  # Noise-signal ratio in terms of variances (error sd as % of signal)
-} else if (errors_sp == TRUE) {
-  e_weight <- .5
-  share_error <- 0.4
-  }
-# } else if (errors_sp == 3) {
+# ## dim parameter
+# num_controls <- 16
+# t0 <- 11
+# time_periods <- t0 + 20
+# time_periods_controls <- 80  # -GP- Do not change this with t0.
+# bands <- 5
+# 
+# ## sampling pars
+# iter <- 6000
+# warm <- 2000
+# chains <- 3
+# ## sim pars
+# 
+# # ----- Spatial and temporal correlation parameters.
+# 
+# sp_var <- .4
+# tt_var <- 0.3 ^ 2  # -GP- I reduced the tt_var a little.
+# ti_var <- 0.7 ^ 2  # -GP- I squared this to make it a variance and comparable to tt_var
+# bi_var <- 0.5 ^ 2  # -GP- I squared this to make it a variance and comparable to sp_var
+# tt_range <- .05
+# sp_nugget <- 0.001
+# tt_nugget <- 0.15 ^ 2  # -GP- Adding some temporal nugget to the controls.
+# rho_error <- .2	  
+# errors_sp <- TRUE
+# 
+# 
+# # ----- Outcome model errors.
+# 
+# if (errors_sp == FALSE) {
+#   e_weight <- 0  # Proportion of error's variance that is spatial
+#   share_error <- 0.4  # Noise-signal ratio in terms of variances (error sd as % of signal)
+# } else if (errors_sp == TRUE) {
 #   e_weight <- .5
-#   share_error <- 0.7
-# }
-print(errors_sp)
+#   share_error <- 0.4
+#   }
+# # } else if (errors_sp == 3) {
+# #   e_weight <- .5
+# #   share_error <- 0.7
+# # }
+# print(errors_sp)
 
 
 # ---------------- PART B: Generating or loading data ---------------- #
 
-if (use_external_data) {
-  external_env <- new.env()
-  loaded_vars <- load(external_data_path, envir = external_env)
-
-  if (!"sim" %in% loaded_vars) {
-    stop("The external data file must contain an object named 'sim'.")
-  }
+# if (use_external_data) {
+#   external_env <- new.env()
+#   loaded_vars <- load(external_data_path, envir = external_env)
+# 
+#   if (!"sim" %in% loaded_vars) {
+#     stop("The external data file must contain an object named 'sim'.")
+#   }
 
 # ---------------- PART B: Generating or loading data ---------------- #
 
@@ -219,16 +219,16 @@ method <- c("SC","SR", "OLS", "BVR", "BSC", "SMAC")
 iter <- 4
 warm <- 2
 chains <- 1
+treated_radius <- c(0, 0.25, 0.5, 0.75, 1)
 
-est <- estimation(sim = sim, t0 = t0, bands = bands,
-                  treated_radius = treated_radius,
-                  iter = iter, warm = warm,
-                  norm = TRUE, method = method, chains = chains)
+
+est <- estimation(sim = sim, t0 = t0, bands = bands, iter = iter, warm = warm,
+                  norm = TRUE, method = method, treated_radius = treated_radius, chains = chains)
 
 
 # ---------------- PART D: Getting predictions ---------------- #
 
-cal <- calculation(sim = sim, est = est, t0 = t0, bands = bands, norm = TRUE)
+cal <- calculation(sim = sim, est = est, bands = bands, norm = TRUE)
 point <- point_estimate(sim, cal) ## it calculates bias and MSE
 c_interv <- ci(sim = sim, est = est, cal = cal, t0 = t0, norm = TRUE)
 cover <- coverage(sim, interv = c_interv)
@@ -245,7 +245,14 @@ out_path <- paste0('Output/apr_sims/Results/ss', sp_range, '/tt', tt_periods,
 out_path
 out_file=paste0(out_path, "/res_",index, ".RData")
 out_file
-save(res, file=out_file)
+
+path_to_create <- dirname(out_file)
+
+if (!dir.exists(path_to_create)) {
+  dir.create(path_to_create, recursive = TRUE)
+}
+
+save(res, file = out_file)
 print("fine primo esperimento")
 
 ################################################################################
