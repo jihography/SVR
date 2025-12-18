@@ -9,10 +9,290 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+```{r}
+library(tidyverse)
+library(patchwork)
+```
+
+## analysis
+```{r, message=FALSE}
+########################################################
+########################################################
+## master script for computations on hipergator  #######
+########################################################
+########################################################
+
+# args <- commandArgs(TRUE)
+# args
+# sp_range <- as.numeric(args[1])
+# tt_periods <- as.numeric(args[2])
+# errors_sp <- as.numeric(args[3])
+# index <- as.numeric(args[4])
+# set.seed(index)
+
+setwd("/Users/kjh/Documents/innocity/SVR")
+
+# Set to TRUE to bypass simulations and load an external dataset that already
+# contains a matrix named `sim` (time x units). You can optionally include
+# `bands`, `t0`, and `num_controls` in the .RData file to override the defaults
+# below. The path is relative to the working directory set above.
+use_external_data <- TRUE
+external_data_path <- "SVR_input_data_t2013.RData"
+
+# Set to TRUE to bypass simulations and load an external dataset that already
+# contains a matrix named `sim` (time x units). You can optionally include
+# `bands`, `t0`, and `num_controls` in the .RData file to override the defaults
+# below. The path is relative to the working directory set above.
+# use_external_data <- FALSE
+# external_data_path <- "SVR_input_data.RData"
+
+# --------------- Sourcing functions --------------- #
+
+# Sourcing in code from other files.
+source("Functions/sim_model_function.R")
+source("Functions/estimation_function.R")
+source("Functions/calculation_function.R")
+source("Functions/point_estimate_function.R")
+# source("Functions/postestimation_function.R")  # Not found.
+source("Functions/ci_function.R")
+source("Functions/coverage_function.R")
+source("Methods/helper/preset_function.R")
+source("Methods/helper/ci_shen.R")
+source("Methods/helper/ci_bayes.R")
+source("Methods/helper/cover_helper.R")
+source("Methods/helper/binder.R")
+source("Methods/helper/wrapper.R")
+source("Methods/helper/helper_vertical_regression.R")
+
+# Function for performing synthetic controls.
+source("Methods/helper/SCM_function.R")
+source('Methods/sepSC_method.R')
+source('Functions/helper/sepSC_calc_function.R')
+
+# Function for performing separate vertical regression with ridge.
+source('Methods/sepSR_method.R')
+source('Functions/helper/sepSR_calc_function.R')
+
+# Function for performing separate vertical regression with SVD
+source('Methods/sepOLS_method.R')
+
+# Function for performing Bayesian separate vertical regression.
+source('Methods/sepBVR_method.R')
+
+# Function for performing Bayesian synthetic control.
+source('Methods/sepBSC_method.R')
+
+# Function for performing SMAC. 
+source('Methods/SMAC_method.R')
+
+# ------------ End of Sourcing functions ------------- #
+
+
+library(LowRankQP)
+library(glmnet)
+library(rstan)
+library(spatstat)
+library(Matrix)
+library(fungible)
+rstan_options(auto_write = FALSE)
+out_path <- 'Output/1_sims/Results/'
+
+
+# ----------- PART A: Setting the simulation parameters ----------- #
+
+# ## dim parameter
+# num_controls <- 16
+# t0 <- 11
+# time_periods <- t0 + 20
+# time_periods_controls <- 80  # -GP- Do not change this with t0.
+# bands <- 5
+# 
+# ## sampling pars
+# iter <- 6000
+# warm <- 2000
+# chains <- 3
+# ## sim pars
+# 
+# # ----- Spatial and temporal correlation parameters.
+# 
+# sp_var <- .4
+# tt_var <- 0.3 ^ 2  # -GP- I reduced the tt_var a little.
+# ti_var <- 0.7 ^ 2  # -GP- I squared this to make it a variance and comparable to tt_var
+# bi_var <- 0.5 ^ 2  # -GP- I squared this to make it a variance and comparable to sp_var
+# tt_range <- .05
+# sp_nugget <- 0.001
+# tt_nugget <- 0.15 ^ 2  # -GP- Adding some temporal nugget to the controls.
+# rho_error <- .2	  
+# errors_sp <- TRUE
+# 
+# 
+# # ----- Outcome model errors.
+# 
+# if (errors_sp == FALSE) {
+#   e_weight <- 0  # Proportion of error's variance that is spatial
+#   share_error <- 0.4  # Noise-signal ratio in terms of variances (error sd as % of signal)
+# } else if (errors_sp == TRUE) {
+#   e_weight <- .5
+#   share_error <- 0.4
+#   }
+# # } else if (errors_sp == 3) {
+# #   e_weight <- .5
+# #   share_error <- 0.7
+# # }
+# print(errors_sp)
+
+
+# ---------------- PART B: Generating or loading data ---------------- #
+
+# if (use_external_data) {
+#   external_env <- new.env()
+#   loaded_vars <- load(external_data_path, envir = external_env)
+# 
+#   if (!"sim" %in% loaded_vars) {
+#     stop("The external data file must contain an object named 'sim'.")
+#   }
+
+# ---------------- PART B: Generating or loading data ---------------- #
+
+if (use_external_data) {
+  external_env <- new.env()
+  loaded_vars <- load(external_data_path, envir = external_env)
+
+  if (!"sim" %in% loaded_vars) {
+    stop("The external data file must contain an object named 'sim'.")
+  }
+
+  sim <- external_env$sim
+
+  if ("bands" %in% loaded_vars) {
+    bands <- external_env$bands
+  }
+
+  if ("t0" %in% loaded_vars) {
+    t0 <- external_env$t0
+    tt_periods <- t0
+  }
+
+  if ("num_controls" %in% loaded_vars) {
+    num_controls <- external_env$num_controls
+  } else {
+    num_controls <- ncol(sim) - bands
+  }
+
+  time_periods <- nrow(sim)
+  beta_true <- NULL
+
+  message("Loaded external sim matrix with ", nrow(sim), " rows and ",
+          ncol(sim), " columns.")
+} else {
+  seed_b <- seed_t <- seed_e <- index
+
+  sim <- sim_model(seed_b = seed_b, seed_t = seed_t, seed_e = seed_e,
+                   time_periods = time_periods,
+                   time_periods_controls = time_periods_controls,
+                   bands = bands, num_controls = num_controls,
+                   treated_radius = treated_radius, rho_error = rho_error,
+                   sp_var = sp_var, sp_range = sp_range, bi_var = bi_var,
+                   tt_var = tt_var,
+                   tt_range = tt_range, ti_var = ti_var, sp_nugget = sp_nugget,
+                   tt_nugget = tt_nugget,
+                   e_weight = e_weight, share_error = share_error)
+
+  beta_true <- sim$beta
+  sim <- sim$sim  # The potential outcomes under control.
+
+  set.seed(index)
+}
+
+if (bands < 1 || bands >= ncol(sim)) {
+  stop("`bands` must be at least 1 and less than the total number of units.")
+}
+
+if (t0 < 1 || t0 >= nrow(sim)) {
+  stop("`t0` must fall within the number of available time periods.")
+}
+
+# if (length(treated_radius) != bands) {
+#   stop("Length of `treated_radius` must match `bands`.")
+# }
+
+# Validate treated/control split matches expectations.
+if (ncol(sim) - bands != num_controls) {
+  message(
+    "Resetting `num_controls` to match data: expected ", ncol(sim) - bands,
+    " controls from sim matrix, overriding previous value of ", num_controls
+  )
+  num_controls <- ncol(sim) - bands
+}
+
+
+
+# ------- The methods that will be used.
+method <- c("SC","SR", "OLS", "BVR", "BSC", "SMAC")
+# method <- c("SC","SR", "OLS")
+
+
+# ---------------- PART C: Estimating the models ---------------- #
+
+iter <- 4000
+warm <- 2000
+chains <- 4
+treated_radius <- c(0, 0.25, 0.5, 0.75, 1)
+
+# sim
+sim <- as.matrix(sim)
+
+est <- estimation(sim = sim, t0 = t0, bands = bands, iter = iter, warm = warm,
+                  norm = TRUE, method = method, treated_radius = treated_radius, chains = chains)
+
+
+# ---------------- PART D: Getting predictions ---------------- #
+
+cal <- calculation(sim = sim, est = est, bands = bands, norm = TRUE)
+point <- point_estimate(sim, cal) ## it calculates bias and MSE
+c_interv <- ci(sim = sim, est = est, cal = cal, t0 = t0, norm = TRUE)
+cover <- coverage(sim, interv = c_interv)
+
+
+
+# ---------------- PART E: Saving results ---------------- #
+
+res <- list(sim = sim, est = est, cal = cal, beta_true = beta_true,
+            point = point, ci = c_interv, coverage = cover)
+
+index <- NA
+
+out_path <- paste0('Output/apr_sims/Results')
+out_path
+out_file=paste0(out_path, "/res_",index, "_t2013.RData")
+out_file
+
+path_to_create <- dirname(out_file)
+
+if (!dir.exists(path_to_create)) {
+  dir.create(path_to_create, recursive = TRUE)
+}
+
+save(res, file = out_file)
+print("fine primo esperimento")
+
+################################################################################
+
+
+```
+
+
 ## load result file
 
 ```{r}
-load("Output/apr_sims//Results/ssNA/tt11/eeNA/res_NA.RData")
+# load("Output/apr_sims/Results/res_NA_t2013.RData")
+load("Output/apr_sims/Results/res_NA_t2013.RData")
+load("SVR_input_data_t2013.RData")
+```
+
+```{r}
+load("Output/apr_sims/Results/res_NA_t2013.RData")
+
 ```
 
 ## check
@@ -34,7 +314,7 @@ summ <- as.data.frame(summ)
 summ$mean_bias <- as.numeric(summ$mean_bias)
 summ$MAE <- as.numeric(summ$MAE)
 summ$RMSE <- as.numeric(summ$RMSE)
-summ[order(summ$RMSE), ]
+summ[order(summ$MAE), ]
 
 # CI 폭 체크(OLS가 0인지 확인)
 width_ols <- res$ci$OLS$upper_bound - res$ci$OLS$lower_bound
@@ -45,36 +325,525 @@ mean(width_ols == 0)
 cov_summ <- sapply(res$coverage, mean)
 cov_summ
 ```
+```{r}
+avg_ci_width <- function(res, method) {
+  stopifnot(!is.null(res$ci[[method]]))
+  lb <- as.matrix(res$ci[[method]]$lower_bound)
+  ub <- as.matrix(res$ci[[method]]$upper_bound)
+  mean(ub - lb, na.rm = TRUE)   # 28*5 전부 평균
+}
+
+# 사용: 방법 이름이 정확히 "OLS","BVR","SMAC"인 경우
+out <- data.frame(
+  method = c("OLS", "BVR", "SMAC"),
+  mean_ci_width = c(
+    avg_ci_width(res, "OLS"),
+    avg_ci_width(res, "BVR"),
+    avg_ci_width(res, "SMAC")
+  )
+)
+out
+
+```
+
+```{r}
+names(res$est)           # 방법들
+names(res$est$SMAC)      # SMAC 내부 파라미터들
+
+dim(res$est$SMAC$beta0)  # (draw, treated)
+dim(res$est$SMAC$beta)   # (draw, treated, control)
+```
+
+## beta comparison
+
+```{r}
+## 1) sim에서 treated/control 이름 및 treated 수 잡기
+# rownames가 "Y1999" 같은 형태면 연도 추출 (여기선 그림엔 직접 쓰진 않지만 같이 둠)
+years <- as.integer(gsub("^[A-Za-z]+", "", rownames(res$sim)))
+
+treated_names <- grep("Treated", colnames(res$sim), value = TRUE)
+control_names <- setdiff(colnames(res$sim), treated_names)
+
+n_treated <- length(treated_names)
+n_control <- length(control_names)
+
+stopifnot(n_treated > 0, n_control > 0)
+
+## 색(논문 느낌)
+COL <- c(BVR="#F0E442", OLS="#56B4E9", SVR="#009E73")
+
+## 2) BVR: treated 1..K의 gp1(draw x Kcol)에서 beta 매트릭스 만들기
+get_bvr_beta_matrix_from_gp1 <- function(res, n_treated, treated_names, control_names = NULL) {
+  BVR <- res$est$BVR
+
+  # "treated 1", "treated 2" 처럼 공백 허용
+  treated_slots <- grep("^treated\\s*[0-9]+$", names(BVR), value = TRUE)
+  if (length(treated_slots) == 0) stop("BVR에서 'treated 1' 형태 키를 못 찾음.")
+
+  # 숫자 기준 정렬
+  ord <- order(as.integer(gsub("^treated\\s*", "", treated_slots)))
+  treated_slots <- treated_slots[ord]
+
+  # 첫 treated의 gp1로 열 수 확인
+  gp1_1 <- as.matrix(BVR[[treated_slots[1]]]$gp1)  # draws x K
+  K <- ncol(gp1_1)
+
+  # (a) intercept 후보 열: 이름으로 찾기
+  drop_idx <- integer(0)
+  if (!is.null(colnames(gp1_1))) {
+    drop_idx <- which(tolower(colnames(gp1_1)) %in% c("(intercept)","intercept","beta0","const"))
+  }
+
+  # (b) 이름이 없는데 K = control+1 이면 "첫 열 intercept" 가정(가장 흔함)
+  if (length(drop_idx) == 0 && !is.null(control_names) && K == length(control_names) + 1) {
+    drop_idx <- 1
+  }
+
+  # 실제 사용할 K2
+  gp1_1_use <- gp1_1
+  if (length(drop_idx) > 0) gp1_1_use <- gp1_1[, -drop_idx, drop=FALSE]
+  K2 <- ncol(gp1_1_use)
+
+  # treated x control(beta) 조립: control별 posterior median
+  T_use <- min(n_treated, length(treated_slots))
+  B <- matrix(NA_real_, nrow = T_use, ncol = K2)
+
+  for (t in seq_len(T_use)) {
+    gp1 <- as.matrix(BVR[[treated_slots[t]]]$gp1)  # draws x K
+    if (length(drop_idx) > 0) gp1 <- gp1[, -drop_idx, drop=FALSE]  # draws x K2
+    B[t, ] <- apply(gp1, 2, median)
+  }
+
+  # row/col 이름
+  rownames(B) <- treated_names[seq_len(nrow(B))]
+
+  # colnames: gp1에 있으면 그걸 우선, 없으면 control_names 또는 C1..Cn
+  if (!is.null(colnames(gp1_1_use))) {
+    colnames(B) <- colnames(gp1_1_use)
+  } else if (!is.null(control_names) && length(control_names) == ncol(B)) {
+    colnames(B) <- control_names
+  } else {
+    colnames(B) <- paste0("C", seq_len(ncol(B)))
+  }
+
+  B
+}
+
+B_bvr <- get_bvr_beta_matrix_from_gp1(res, n_treated, treated_names, control_names)
+
+## 3) OLS: 16x5(control x treated) -> 5x16(treated x control)
+B_ols_raw <- as.matrix(res$est$OLS)
+# 안전하게 전치 (너 케이스에서 dim=16x5)
+B_ols <- t(B_ols_raw)
+
+# 이름 붙이기(가능하면)
+rownames(B_ols) <- treated_names[seq_len(nrow(B_ols))]
+colnames(B_ols) <- control_names[seq_len(ncol(B_ols))]
+
+## 4) SVR(SMAC): draw x treated x control -> posterior median (treated x control)
+beta_draws <- res$est$SMAC$beta
+# 기대: [draw, treated, control]
+stopifnot(length(dim(beta_draws)) == 3)
+stopifnot(dim(beta_draws)[2] == n_treated)
+
+B_svr <- apply(beta_draws, c(2,3), median)
+rownames(B_svr) <- treated_names
+
+# SMAC의 control 이름이 없다면 sim의 control_names를 붙임(길이 맞을 때만)
+if (is.null(colnames(B_svr)) && length(control_names) == ncol(B_svr)) {
+  colnames(B_svr) <- control_names
+}
+
+## 5) 세 방법의 control 차원을 일치시키기
+# 보통 BVR gp1이 17열인데 intercept 제거되면 16열로 맞아야 정상.
+# 그래도 이름이 안 맞거나 개수가 다르면 "공통 control"만 취함.
+if (!is.null(colnames(B_bvr)) && !is.null(colnames(B_ols)) && !is.null(colnames(B_svr))) {
+  common_controls <- Reduce(intersect, list(colnames(B_bvr), colnames(B_ols), colnames(B_svr)))
+  if (length(common_controls) == 0) stop("세 방법의 control colnames 교집합이 0. colnames 확인 필요.")
+  B_bvr <- B_bvr[, common_controls, drop=FALSE]
+  B_ols <- B_ols[, common_controls, drop=FALSE]
+  B_svr <- B_svr[, common_controls, drop=FALSE]
+} else {
+  k <- min(ncol(B_bvr), ncol(B_ols), ncol(B_svr))
+  B_bvr <- B_bvr[, 1:k, drop=FALSE]
+  B_ols <- B_ols[, 1:k, drop=FALSE]
+  B_svr <- B_svr[, 1:k, drop=FALSE]
+}
+
+## 6) long 포맷으로 변환
+beta_long <- bind_rows(
+  as_tibble(as.data.frame(as.table(B_bvr))) %>% mutate(method="BVR"),
+  as_tibble(as.data.frame(as.table(B_ols))) %>% mutate(method="OLS"),
+  as_tibble(as.data.frame(as.table(B_svr))) %>% mutate(method="SVR")
+) %>%
+  rename(treated = Var1, control = Var2, beta = Freq) %>%
+  mutate(method = factor(method, levels=c("BVR","OLS","SVR")))
+
+## 7) Figure 4: control 3개 골라 facet으로 (논문 스타일)
+# set.seed(1)
+# controls_show <- sample(unique(beta_long$control), 8)
+
+p_fig4 <- beta_long %>%
+  ggplot(aes(x = treated, y = beta, color = method, group = method)) +
+  geom_line(linewidth = 1.1) +
+  facet_wrap(~ control, nrow = 2) +
+  scale_color_manual(values = COL, name = "Method") +
+  # ✅ x축을 1~5로 간소화
+  scale_x_discrete(
+    breaks = treated_names,
+    labels = as.character(seq_along(treated_names))
+  ) +
+  labs(x = "Treated units", y = expression(beta[c])) +
+  theme_bw(base_size = 14) +
+  theme(
+    legend.position = "top",
+    panel.grid.minor = element_blank()
+  )
+
+p_fig4
+ggsave("models_2013.png", p_fig4, width = 13, height = 6, dpi = 500)  
+```
+```{r}
+library(dplyr)
+library(tibble)
+library(ggplot2)
+
+# ggh4x: facet별 y축 다르게
+if (!requireNamespace("ggh4x", quietly = TRUE)) install.packages("ggh4x")
+library(ggh4x)
+
+# ------------------------------------------------------------
+# 0) 기본 세팅
+# ------------------------------------------------------------
+COL_SVR <- "#009E73"
+
+band_levels <- c(
+  "Treated_Core",
+  "Treated_Band_5km",
+  "Treated_Band_10km",
+  "Treated_Band_15km",
+  "Treated_Band_20km"
+)
+
+# years: rownames(res$sim) = "Y1997" 형태 가정
+years <- as.integer(sub("^Y", "", rownames(res$sim)))
+stopifnot(length(years) == nrow(res$sim))
+
+# ------------------------------------------------------------
+# 1) Y_obs, point(median), CI bounds 가져오기 (각각 28x5)
+# ------------------------------------------------------------
+# y_obs: res$sim (28 x 5라고 했으니 그대로)
+y_obs <- as.matrix(res$sim)
+if (ncol(y_obs) != n_treat) {
+  # 혹시 sim에 control까지 있으면 앞 5개만
+  y_obs <- y_obs[, seq_len(n_treat), drop = FALSE]
+}
+
+# point estimate: bias median에 -1 곱 (28 x 5)
+eff_med <- -1 * as.matrix(res$point$bias$SMACmedian)
+
+# CI bound: (28 x 5)  [주의: user가 제시한 계산식 그대로]
+mu_lo <- as.matrix(res$ci$SMAC$lower_bound)
+mu_up <- as.matrix(res$ci$SMAC$upper_bound)
+
+eff_lo <- y_obs - mu_lo
+eff_up <- y_obs - mu_up
+
+stopifnot(all(dim(eff_med) == dim(y_obs)))
+stopifnot(all(dim(eff_lb)  == dim(y_obs)))
+stopifnot(all(dim(eff_ub)  == dim(y_obs)))
+
+# ------------------------------------------------------------
+# 2) te_df (long format) 만들기
+# ------------------------------------------------------------
+te_df <- purrr::map_dfr(seq_along(band_levels), function(j) {
+  nm <- band_levels[j]
+  tibble(
+    treated = nm,
+    year    = years,
+    median  = eff_med[, nm],
+    lower   = eff_lo[, nm],
+    upper   = eff_up[, nm]
+  )
+}) %>%
+  mutate(treated = factor(treated, levels = band_levels))  # Core가 맨 왼쪽
+
+# ------------------------------------------------------------
+# 3) facet별 y축 스케일 지정 (Core만 크게)
+#    - 순서는 band_levels 순서와 정확히 같아야 함
+# ------------------------------------------------------------
+y_scales <- list(
+  scale_y_continuous(limits = c(-5, 55)),  # Treated_Core
+  scale_y_continuous(limits = c(-8, 8)),   # 5km
+  scale_y_continuous(limits = c(-8, 8)),   # 10km
+  scale_y_continuous(limits = c(-8, 8)),   # 15km
+  scale_y_continuous(limits = c(-8, 8))    # 20km
+)
+
+# ------------------------------------------------------------
+# 4) Figure 5 plot (세팅 동일 + Core 왼쪽 + Core만 y축 다르게)
+# ------------------------------------------------------------
+p_fig5 <- te_df %>%
+  ggplot(aes(x = year, y = median)) +
+  theme(aspect_ratio = 0.2) +
+  scale_x_continuous(breaks = c(1997, 2007, 2013)) +
+  geom_ribbon(aes(ymin = lower, ymax = upper), fill = COL_SVR, alpha = 0.25) +
+  geom_line(color = COL_SVR, linewidth = 1.1) +
+  geom_vline(xintercept = c(2007, 2013), linewidth = 0.7) +
+  facet_wrap(~ treated, nrow = 1, scales = "free_y") +
+  ggh4x::facetted_pos_scales(y = y_scales) +
+  labs(x = "Years", y = "Estimate") +
+  theme_bw(base_size = 14) +
+  theme(panel.grid.minor = element_blank())
+
+p_fig5
+ggsave("post_2013.png", p_fig5, width = 14, height = 3.6, dpi = 500)
+
+```
+
 
 ```{r}
 library(dplyr)
-library(ggplot2)
+library(tibble)
 
-COL <- c(BVR = "#F0E442", OLS = "#56B4E9", SVR = "#009E73")
+intertemporal_avg_from_beta <- function(res, t0,
+                                        probs = c(0.025, 0.5, 0.975),
+                                        treated_names = NULL,
+                                        control_names = NULL) {
 
-plot_beta_panels <- function(beta_df, controls_to_show) {
-  beta_df %>%
-    filter(control_id %in% controls_to_show,
-           method %in% c("BVR","OLS","SVR")) %>%
-    mutate(
-      method = factor(method, levels = c("BVR","OLS","SVR")),
-      control_id = factor(control_id, levels = controls_to_show)
-    ) %>%
-    ggplot(aes(x = treated_unit, y = beta, color = method, group = method)) +
-    geom_line(linewidth = 1.1) +
-    facet_wrap(~ control_id, nrow = 1) +
-    scale_color_manual(values = COL, name = "Method") +
-    labs(x = "Treated units", y = NULL) +
-    theme_bw(base_size = 12) +
-    theme(
-      legend.position = "top",
-      panel.grid.minor = element_blank()
-    )
+  sim <- as.matrix(res$sim)
+  Tt  <- nrow(sim)
+
+  # -----------------------------
+  # 1) treated / control columns
+  # -----------------------------
+  if (is.null(treated_names)) {
+    # 네 컬럼명 기준(가능하면 이 순서가 제일 안전)
+    cand <- c("Treated_Core","Treated_Band_5km","Treated_Band_10km","Treated_Band_15km","Treated_Band_20km")
+    if (all(cand %in% colnames(sim))) treated_names <- cand
+    else treated_names <- grep("Treated", colnames(sim), value = TRUE)
+  }
+  I <- length(treated_names)
+  stopifnot(I > 0)
+
+  if (is.null(control_names)) {
+    control_names <- setdiff(colnames(sim), treated_names)
+  }
+
+  # -----------------------------
+  # 2) beta, beta0 dims 정렬
+  #    목표: beta[S, I, C], beta0[S, I]
+  # -----------------------------
+  beta_raw  <- as.array(res$est$SMAC$beta)
+  beta0_raw <- as.array(res$est$SMAC$beta0)
+
+  d <- dim(beta_raw)  # e.g., 8000 x 5 x 8 (축 순서는 케이스별로 다를 수 있음)
+  stopifnot(length(d) == 3)
+
+  S <- max(d)     # draws
+  I0 <- min(d)    # treated (5)
+  C0 <- setdiff(d, c(S, I0))[1]  # controls (8)
+  if (I0 != I) stop("treated 개수 불일치: beta에는 ", I0, "인데 treated_names는 ", I)
+
+  # beta를 [S, I, C]로 맞추기
+  idx_draw  <- which(d == S)[1]
+  idx_treat <- which(d == I)[1]
+  idx_ctrl  <- setdiff(1:3, c(idx_draw, idx_treat))[1]
+  beta <- aperm(beta_raw, c(idx_draw, idx_treat, idx_ctrl))  # [S,I,C]
+
+  # beta0를 [S,I]로 맞추기
+  d0 <- dim(beta0_raw)
+  if (length(d0) == 2) {
+    idx_draw0  <- which(d0 == S)[1]
+    idx_treat0 <- which(d0 == I)[1]
+    beta0 <- if (idx_draw0 == 1 && idx_treat0 == 2) beta0_raw else t(beta0_raw)
+  } else if (length(d0) == 1 && length(beta0_raw) == S * I) {
+    beta0 <- matrix(beta0_raw, nrow = S, ncol = I, byrow = TRUE)
+  } else {
+    stop("beta0 dim 해석 불가: ", paste(d0, collapse="x"))
+  }
+
+  # -----------------------------
+  # 3) post 기간 데이터 매트릭스 구성
+  # -----------------------------
+  post_idx <- (t0 + 1):Tt
+  post_len <- length(post_idx)
+  stopifnot(post_len > 0)
+
+  Y_post <- sim[post_idx, treated_names, drop = FALSE]            # [post, I]
+
+  # controls: beta의 C0와 맞춰야 함
+  if (length(control_names) < C0) stop("control_names 개수(", length(control_names), ") < beta controls(", C0, ")")
+  if (length(control_names) > C0) {
+    message("control 후보가 ", length(control_names), "개라서, 앞의 ", C0, "개만 사용합니다. (Stan에 넣은 순서와 동일한지 확인 권장)")
+    control_names <- control_names[seq_len(C0)]
+  }
+  X_post <- sim[post_idx, control_names, drop = FALSE]            # [post, C]
+
+  # -----------------------------
+  # 4) draw별 intertemporal average 계산
+  #    Delta_draws: [S, I]
+  # -----------------------------
+  Delta_draws <- matrix(NA_real_, nrow = S, ncol = I)
+
+  for (i in seq_len(I)) {
+    B_i <- beta[, i, , drop = FALSE][,1,]  # [S, C]
+    # pred: [post, S] = X_post %*% t(B_i) + beta0[,i]
+    pred <- X_post %*% t(B_i)              # [post, S]
+    pred <- sweep(pred, 2, beta0[, i], "+")
+    # tau: y - pred
+    tau  <- matrix(Y_post[, i], nrow = post_len, ncol = S) - pred
+    Delta_draws[, i] <- colMeans(tau)
+  }
+
+  # -----------------------------
+  # 5) 요약 (median + CrI)
+  # -----------------------------
+  out <- tibble(
+    band = treated_names,
+    post_len = post_len,
+    mean   = colMeans(Delta_draws),
+    median = apply(Delta_draws, 2, median),
+    lower  = apply(Delta_draws, 2, quantile, probs[1]),
+    upper  = apply(Delta_draws, 2, quantile, probs[3])
+  )
+
+  out
 }
 
-# 예시:
-controls_to_show <- sample(unique(beta_df$control_id), 3)
-p_top <- plot_beta_panels(beta_df, controls_to_show)
+# 사용 예시:
+# t0는 이미 계산해둔 값 사용
+avg_df <- intertemporal_avg_from_beta(res, t0 = t0)
+avg_df
+write.csv(avg_df, "post_t2013.csv", row.names = FALSE)
+write.csv(sim, "sim.csv", row.names = TRUE)
+```
+
+
+```{r}
+colnames(sim_orig)[1:5]
+range(sim[,1:5], na.rm=TRUE)
+range(apply(munn_draws, c(2,3), median), na.rm=TRUE)
+```
+
+```{r}
+# dim(y_obs_arr); dim(munn_draws)
+```
+
+---
+
+## DiD
+```{r}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(fixest)
+library(broom)
+
+# ------------------------------------------------------------
+# 0) sim 불러오기
+# ------------------------------------------------------------
+sim_df <- read.csv("sim.csv", check.names = FALSE)
+rownames(sim_df) <- sim_df[[1]]
+sim_df[[1]] <- NULL
+
+years <- as.integer(sub("^Y", "", rownames(sim_df)))
+
+# treated 5개(컬럼명 고정)
+treated_cols <- c("Treated_Core",
+                  "Treated_Band_5km", "Treated_Band_10km",
+                  "Treated_Band_15km", "Treated_Band_20km")
+
+stopifnot(all(treated_cols %in% colnames(sim_df)))
+
+TREAT_YEAR <- 2013
+
+# ------------------------------------------------------------
+# 1) long panel 만들기
+# ------------------------------------------------------------
+did_df <- sim_df %>%
+  mutate(year = years) %>%
+  pivot_longer(-year, names_to = "unit_id", values_to = "outcome") %>%
+  mutate(
+    rel_time = year - TREAT_YEAR,
+
+    core = as.integer(unit_id == "Treated_Core"),
+    b5   = as.integer(unit_id == "Treated_Band_5km"),
+    b10  = as.integer(unit_id == "Treated_Band_10km"),
+    b15  = as.integer(unit_id == "Treated_Band_15km"),
+    b20  = as.integer(unit_id == "Treated_Band_20km"),
+
+    band = case_when(
+      core == 1 ~ "Treated_Core",
+      b5   == 1 ~ "Treated_Band_5km",
+      b10  == 1 ~ "Treated_Band_10km",
+      b15  == 1 ~ "Treated_Band_15km",
+      b20  == 1 ~ "Treated_Band_20km",
+      TRUE      ~ "Control"
+    )
+  )
+
+# ------------------------------------------------------------
+# 2) 밴드별 event-study DiD (TWFE)
+#    - ref=-1 (처치 직전 연도=2012)
+# ------------------------------------------------------------
+m_es <- feols(
+  outcome ~
+    i(rel_time, core, ref = -1) +
+    i(rel_time, b5,   ref = -1) +
+    i(rel_time, b10,  ref = -1) +
+    i(rel_time, b15,  ref = -1) +
+    i(rel_time, b20,  ref = -1)
+  | unit_id + year,
+  data = did_df,
+  vcov = ~ unit_id   # 유닛 클러스터 (유닛 수 적으면 해석은 보수적으로)
+)
+
+etable(m_es)
+
+# ------------------------------------------------------------
+# 3) plot용 계수 추출/정리
+# ------------------------------------------------------------
+tid <- broom::tidy(m_es, conf.int = TRUE)
+
+es_df <- tid %>%
+  filter(grepl("^rel_time::", term)) %>%
+  mutate(
+    rel_time = as.integer(sub("^rel_time::(-?[0-9]+):.*$", "\\1", term)),
+    band = case_when(
+      grepl(":core$", term) ~ "Treated_Core",
+      grepl(":b5$",   term) ~ "Treated_Band_5km",
+      grepl(":b10$",  term) ~ "Treated_Band_10km",
+      grepl(":b15$",  term) ~ "Treated_Band_15km",
+      grepl(":b20$",  term) ~ "Treated_Band_20km",
+      TRUE ~ NA_character_
+    ),
+    year = TREAT_YEAR + rel_time
+  ) %>%
+  filter(!is.na(band)) %>%
+  mutate(band = factor(band, levels = treated_cols))  # Core 왼쪽부터
+
+# ------------------------------------------------------------
+# 4) 그림 (너 p_fig5 스타일 최대한 맞춤)
+# ------------------------------------------------------------
+COL_DID <- "#0072B2"  # 임의(원하면 너 컬러로 바꿔)
+
+p_did_es <- es_df %>%
+  ggplot(aes(x = year, y = estimate)) +
+  theme(aspect_ratio = 0.2) +
+  scale_x_continuous(breaks = c(1997, 2007, 2013)) +
+  geom_hline(yintercept = 0, linewidth = 0.6) +
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high), fill = COL_DID, alpha = 0.25) +
+  geom_line(color = COL_DID, linewidth = 1.1) +
+  geom_vline(xintercept = c(2007, 2013), linewidth = 0.7) +
+  facet_wrap(~ band, nrow = 1, scales = "free_y") +
+  labs(x = "Years", y = "DiD Event-study (ref = -1)") +
+  theme_bw(base_size = 14) +
+  theme(panel.grid.minor = element_blank())
+
+p_did_es
+ggsave("did_event_study.png", p_did_es, width = 14, height = 3.6, dpi = 500)
 
 ```
+
 

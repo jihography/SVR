@@ -4,12 +4,12 @@
 ########################################################
 ########################################################
 
-args <- commandArgs(TRUE)
-args
-sp_range <- as.numeric(args[1])
-tt_periods <- as.numeric(args[2])
-errors_sp <- as.numeric(args[3])
-index <- as.numeric(args[4])
+# args <- commandArgs(TRUE)
+# args
+# sp_range <- as.numeric(args[1])
+# tt_periods <- as.numeric(args[2])
+# errors_sp <- as.numeric(args[3])
+# index <- as.numeric(args[4])
 # set.seed(index)
 
 setwd("/Users/kjh/Documents/innocity/SVR")
@@ -216,11 +216,13 @@ method <- c("SC","SR", "OLS", "BVR", "BSC", "SMAC")
 
 # ---------------- PART C: Estimating the models ---------------- #
 
-iter <- 4
-warm <- 2
-chains <- 1
+iter <- 4000
+warm <- 2000
+chains <- 4
 treated_radius <- c(0, 0.25, 0.5, 0.75, 1)
 
+# sim
+sim <- as.matrix(sim)
 
 est <- estimation(sim = sim, t0 = t0, bands = bands, iter = iter, warm = warm,
                   norm = TRUE, method = method, treated_radius = treated_radius, chains = chains)
@@ -240,8 +242,7 @@ cover <- coverage(sim, interv = c_interv)
 res <- list(sim = sim, est = est, cal = cal, beta_true = beta_true,
             point = point, ci = c_interv, coverage = cover)
 
-out_path <- paste0('Output/apr_sims/Results/ss', sp_range, '/tt', tt_periods,
-                   '/ee', errors_sp)
+out_path <- paste0('Output/apr_sims/Results')
 out_path
 out_file=paste0(out_path, "/res_",index, ".RData")
 out_file
