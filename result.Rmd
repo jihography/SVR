@@ -503,6 +503,9 @@ p_fig4 <- beta_long %>%
 p_fig4
 ggsave("models_2013.png", p_fig4, width = 13, height = 6, dpi = 500)  
 ```
+
+## estimates
+
 ```{r}
 library(dplyr)
 library(tibble)
@@ -618,7 +621,6 @@ intertemporal_avg_from_beta <- function(res, t0,
   # 1) treated / control columns
   # -----------------------------
   if (is.null(treated_names)) {
-    # 네 컬럼명 기준(가능하면 이 순서가 제일 안전)
     cand <- c("Treated_Core","Treated_Band_5km","Treated_Band_10km","Treated_Band_15km","Treated_Band_20km")
     if (all(cand %in% colnames(sim))) treated_names <- cand
     else treated_names <- grep("Treated", colnames(sim), value = TRUE)
@@ -796,7 +798,7 @@ m_es <- feols(
     i(rel_time, b20,  ref = -1)
   | unit_id + year,
   data = did_df,
-  vcov = ~ unit_id   # 유닛 클러스터 (유닛 수 적으면 해석은 보수적으로)
+  vcov = ~ unit_id
 )
 
 etable(m_es)
@@ -826,7 +828,7 @@ es_df <- tid %>%
 # ------------------------------------------------------------
 # 4) 그림 (너 p_fig5 스타일 최대한 맞춤)
 # ------------------------------------------------------------
-COL_DID <- "#0072B2"  # 임의(원하면 너 컬러로 바꿔)
+COL_DID <- "#0072B2" 
 
 p_did_es <- es_df %>%
   ggplot(aes(x = year, y = estimate)) +
